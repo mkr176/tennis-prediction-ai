@@ -50,6 +50,12 @@ python3 src/real_atp_data_collector.py
 python3 train_real_atp_model.py
 ```
 
+### Predict a match
+```bash
+# Write down two players, surface and tournament after running:
+predict_match.py
+```
+
 ### Make Predictions
 ```python
 from src.tennis_predictor import TennisPredictor
