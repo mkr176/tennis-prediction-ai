@@ -21,7 +21,11 @@ A high-performance tennis match prediction system that **exceeds the YouTube mod
 
 ## 🎯 Quick Start
 
+<<<<<<< HEAD
 ### 1. Create Virtual Environment
+=======
+### Create Virtual Environment
+>>>>>>> d5162ddc83c17900c7978ddaed92ada9d68b5373
 ```bash
 # Navigate to project directory
 cd tennis-prediction-ai
@@ -36,12 +40,20 @@ venv\Scripts\activate
 source venv/bin/activate
 ```
 
+<<<<<<< HEAD
 ### 2. Install Dependencies
+=======
+###  Install Dependencies
+>>>>>>> d5162ddc83c17900c7978ddaed92ada9d68b5373
 ```bash
 pip install -r requirements.txt
 ```
 
+<<<<<<< HEAD
 ### 3. Train the Model
+=======
+### Train the Model
+>>>>>>> d5162ddc83c17900c7978ddaed92ada9d68b5373
 ```bash
 # Generate real ATP dataset (27,672 matches)
 python3 src/real_atp_data_collector.py
@@ -50,6 +62,7 @@ python3 src/real_atp_data_collector.py
 python3 train_real_atp_model.py
 ```
 
+<<<<<<< HEAD
 ### 4. Make Predictions
 
 #### Interactive Mode (Recommended)
@@ -70,6 +83,15 @@ python3 predict_match.py --examples
 ```
 
 #### Programmatic Usage
+=======
+### Predict a match
+```bash
+# Write down two players, surface and tournament after running:
+predict_match.py
+```
+
+### Make Predictions
+>>>>>>> d5162ddc83c17900c7978ddaed92ada9d68b5373
 ```python
 from src.tennis_predictor import TennisPredictor
 
