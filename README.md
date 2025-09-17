@@ -21,7 +21,27 @@ A high-performance tennis match prediction system that **exceeds the YouTube mod
 
 ## 🎯 Quick Start
 
-### Train the Model
+### 1. Create Virtual Environment
+```bash
+# Navigate to project directory
+cd tennis-prediction-ai
+
+# Create virtual environment
+python -m venv venv
+
+# Activate virtual environment
+# On Windows:
+venv\Scripts\activate
+# On macOS/Linux:
+source venv/bin/activate
+```
+
+### 2. Install Dependencies
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Train the Model
 ```bash
 # Generate real ATP dataset (27,672 matches)
 python3 src/real_atp_data_collector.py
@@ -30,7 +50,26 @@ python3 src/real_atp_data_collector.py
 python3 train_real_atp_model.py
 ```
 
-### Make Predictions
+### 4. Make Predictions
+
+#### Interactive Mode (Recommended)
+```bash
+python3 predict_match.py
+```
+
+#### Command Line Predictions
+```bash
+# Quick prediction
+python3 predict_match.py "Novak Djokovic" "Rafael Nadal"
+
+# Specify surface and tournament
+python3 predict_match.py "Carlos Alcaraz" "Jannik Sinner" --surface clay --tournament grand_slam
+
+# See famous rivalries
+python3 predict_match.py --examples
+```
+
+#### Programmatic Usage
 ```python
 from src.tennis_predictor import TennisPredictor
 
@@ -70,27 +109,142 @@ print(f"Confidence: {prediction['confidence']:.1%}")
 - **1,175 professional players**
 - **42 features per match** including real serve statistics, ATP rankings, break point conversion rates
 
-## 🚀 Usage Examples
+## 🧪 Testing & Validation
+
+### Quick System Test
+```bash
+# Test with Cameron Norrie vs Yi Zhou (known working example)
+python3 predict_match.py "Cameron Norrie" "Yi Zhou" --surface hard --tournament atp_500
+# Expected: Cameron Norrie wins (73.8% confidence)
+
+# Test interactive mode
+python3 predict_match.py
+# Follow prompts to test different players and scenarios
+```
+
+### Test Famous Players
+```bash
+# Test ATP Top Players
+python3 predict_match.py "Novak Djokovic" "Carlos Alcaraz" --surface hard --tournament grand_slam
+python3 predict_match.py "Rafael Nadal" "Daniil Medvedev" --surface clay --tournament masters_1000
+python3 predict_match.py "Jannik Sinner" "Stefanos Tsitsipas" --surface grass --tournament grand_slam
+
+# Show all famous rivalries
+python3 predict_match.py --examples
+```
+
+### Verify Model Loading
+```bash
+# Test that all models load correctly
+python3 -c "
+from src.tennis_predictor import TennisPredictor
+predictor = TennisPredictor()
+success = predictor.load_model()
+print('✅ Model loading successful!' if success else '❌ Model loading failed!')
+"
+```
+
+### Programmatic Testing
+```python
+# Test multiple scenarios
+from src.tennis_predictor import TennisPredictor
+
+predictor = TennisPredictor()
+
+# Test different surfaces
+surfaces = ['hard', 'clay', 'grass']
+tournaments = ['grand_slam', 'masters_1000', 'atp_500', 'atp_250']
+
+for surface in surfaces:
+    for tournament in tournaments:
+        prediction = predictor.predict_match(
+            "Novak Djokovic", "Rafael Nadal",
+            surface, tournament
+        )
+        print(f"{surface.title()} {tournament}: {prediction['predicted_winner']} ({prediction['confidence']:.1%})")
+```
+
+## 🚀 Advanced Usage Examples
 
 ```python
 # Famous rivalry predictions
 prediction = predictor.predict_match("Novak Djokovic", "Rafael Nadal", "clay", "grand_slam")
-# Result: Predicts Nadal (51.1% confidence)
+# Result: Predicts based on current form and surface advantage
 
-# Head-to-head analysis
+# Head-to-head analysis across all surfaces
 h2h = predictor.analyze_head_to_head("Novak Djokovic", "Rafael Nadal")
+print(f"Best surface for Djokovic: {h2h['best_surface_for_player1']}")
 
 # Tournament simulation
-tournament = predictor.simulate_tournament_bracket(players, surface="hard")
+top_8_players = ["Novak Djokovic", "Carlos Alcaraz", "Daniil Medvedev", "Jannik Sinner",
+                 "Stefanos Tsitsipas", "Casper Ruud", "Andrey Rublev", "Taylor Fritz"]
+tournament = predictor.simulate_tournament_bracket(top_8_players, surface="hard", tournament_type="masters_1000")
+print(f"Predicted champion: {tournament['champion']}")
 ```
 
-## 🛠️ Installation
+## 🛠️ Installation & Setup
 
+### Requirements
 ```bash
 pip install pandas numpy scikit-learn xgboost lightgbm optuna joblib requests beautifulsoup4
-python3 src/real_atp_data_collector.py  # Collect real ATP data
-python3 train_real_atp_model.py         # Train 87.4% accuracy model
 ```
+
+### Full Setup Process
+```bash
+# 1. Collect real ATP data (27,672 matches)
+python3 src/real_atp_data_collector.py
+
+# 2. Train 87.4% accuracy model
+python3 train_real_atp_model.py
+
+# 3. Test the system
+python3 predict_match.py "Cameron Norrie" "Yi Zhou" --surface hard --tournament atp_500
+```
+
+## 🔧 Troubleshooting
+
+### Common Issues & Solutions
+
+#### ❌ Error: "No such file or directory: tennis_85_percent_model.pkl"
+**Solution**: The model needs to be trained first
+```bash
+python3 train_real_atp_model.py
+```
+
+#### ❌ Error: "ModuleNotFoundError: No module named 'tennis_predictor'"
+**Solution**: Run from the project root directory
+```bash
+cd tennis-prediction-ai
+python3 predict_match.py "Player1" "Player2"
+```
+
+#### ❌ Error: "not in index" (Feature mismatch)
+**Solution**: Model was trained with different features. Retrain:
+```bash
+python3 train_real_atp_model.py
+```
+
+#### ❌ Error: "Could not make prediction. Players might not be in the system"
+**Solution**:
+1. Check player name spelling (use full names like "Novak Djokovic")
+2. Try well-known ATP players first
+3. Make sure the model loaded successfully
+
+### Verify Installation
+```bash
+# Check if all models exist
+ls -la models/
+# Should show: real_atp_85_percent_model.pkl, real_atp_features.pkl, real_atp_elo_system.pkl
+
+# Test model loading
+python3 -c "from src.tennis_predictor import TennisPredictor; print('✅ Import successful!')"
+```
+
+### Performance Tips
+- **First prediction takes longer** (model loading)
+- **Use full player names** ("Rafael Nadal" not "Rafa")
+- **Stick to ATP tour players** for best accuracy
+- **Interactive mode** is best for multiple predictions
 
 ## 📈 Technical Details
 

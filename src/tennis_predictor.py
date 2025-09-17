@@ -26,9 +26,14 @@ class TennisPredictor:
     def load_model(self):
         """Load the trained 85% accuracy model"""
         try:
-            self.model = joblib.load('../models/tennis_85_percent_model.pkl')
-            self.feature_columns = joblib.load('../models/tennis_features.pkl')
-            self.elo_system = joblib.load('../models/tennis_elo_complete.pkl')
+            import os
+            # Get the directory of this file and construct the models path
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            models_dir = os.path.join(os.path.dirname(current_dir), 'models')
+
+            self.model = joblib.load(os.path.join(models_dir, 'real_atp_85_percent_model.pkl'))
+            self.feature_columns = joblib.load(os.path.join(models_dir, 'real_atp_features.pkl'))
+            self.elo_system = joblib.load(os.path.join(models_dir, 'real_atp_elo_system.pkl'))
 
             print("✅ 85% accuracy tennis model loaded successfully")
             return True
@@ -49,9 +54,9 @@ class TennisPredictor:
         player1_elo_features = self.elo_system.get_player_elo_features(player1, surface)
         player2_elo_features = self.elo_system.get_player_elo_features(player2, surface)
 
-        # Create feature set matching training data
+        # Create feature set matching training data exactly
         features = {
-            # CORE ELO FEATURES (YouTube: 72% accuracy alone)
+            # CORE ELO FEATURES
             'player_elo_diff': player1_elo_features['overall_elo'] - player2_elo_features['overall_elo'],
             'surface_elo_diff': player1_elo_features['surface_elo'] - player2_elo_features['surface_elo'],
             'total_elo': player1_elo_features['overall_elo'] + player2_elo_features['overall_elo'],
@@ -67,31 +72,27 @@ class TennisPredictor:
             'grass_elo_diff': player1_elo_features['grass_elo'] - player2_elo_features['grass_elo'],
             'hard_elo_diff': player1_elo_features['hard_elo'] - player2_elo_features['hard_elo'],
 
-            # Surface specialization
-            'player1_surface_advantage': player1_elo_features['surface_advantage'],
-            'player2_surface_advantage': player2_elo_features['surface_advantage'],
-            'surface_specialization_diff': (player1_elo_features['surface_specialization'] -
-                                           player2_elo_features['surface_specialization']),
-
             # RECENT FORM
             'recent_form_diff': player1_elo_features['recent_form'] - player2_elo_features['recent_form'],
             'momentum_diff': player1_elo_features['recent_momentum'] - player2_elo_features['recent_momentum'],
             'elo_change_diff': player1_elo_features['recent_elo_change'] - player2_elo_features['recent_elo_change'],
 
-            # EXPERIENCE
-            'experience_diff': player1_elo_features['matches_played'] - player2_elo_features['matches_played'],
-            'win_rate_diff': player1_elo_features['career_win_rate'] - player2_elo_features['career_win_rate'],
-
-            # MATCH STATISTICS (estimated/default values for prediction)
-            'ace_diff': 0,  # Will be updated if pre-match stats available
+            # MATCH STATISTICS (default values for prediction)
+            'ace_diff': 0,
             'double_fault_diff': 0,
             'first_serve_pct_diff': 0,
-            'first_serve_won_diff': 0,
-            'break_points_created_diff': 0,
-            'break_points_converted_diff': 0,
-            'total_points_won_diff': 0,
-            'winners_diff': 0,
-            'unforced_errors_diff': 0,
+            'break_points_saved_pct_diff': 0,
+
+            # RANKING AND PLAYER INFO (default values)
+            'rank_diff': 0,  # Will use default if ranking not available
+            'rank_points_diff': 0,
+            'age_diff': 0,
+            'height_diff': 0,
+
+            # HEAD-TO-HEAD (default values)
+            'h2h_advantage': 0,
+            'h2h_win_rate': 0.5,
+            'h2h_total_matches': 0,
 
             # TOURNAMENT CONTEXT
             'tournament_weight': self.elo_system.tournament_weights.get(tournament_type, 25),
@@ -103,11 +104,9 @@ class TennisPredictor:
             'is_grass': 1 if surface == 'grass' else 0,
             'is_hard': 1 if surface == 'hard' else 0,
 
-            # COMBINED FEATURES
-            'elo_x_surface': (player1_elo_features['overall_elo'] - player2_elo_features['overall_elo']) *
-                            (player1_elo_features['surface_elo'] - player2_elo_features['surface_elo']),
-            'form_x_elo': (player1_elo_features['recent_form'] - player2_elo_features['recent_form']) *
-                          (player1_elo_features['overall_elo'] - player2_elo_features['overall_elo']),
+            # INTERACTION FEATURES
+            'elo_rank_interaction': 0,  # Default value
+            'surface_rank_interaction': 0,  # Default value
         }
 
         return features
