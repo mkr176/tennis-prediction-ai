@@ -42,6 +42,7 @@ class RealATPDataCollector:
 
         # Try to fetch from Tennis Abstract (Jeff Sackmann's repository)
         csv_urls = [
+            'https://raw.githubusercontent.com/JeffSackmann/tennis_atp/master/atp_matches_2025.csv',
             'https://raw.githubusercontent.com/JeffSackmann/tennis_atp/master/atp_matches_2024.csv',
             'https://raw.githubusercontent.com/JeffSackmann/tennis_atp/master/atp_matches_2023.csv',
             'https://raw.githubusercontent.com/JeffSackmann/tennis_atp/master/atp_matches_2022.csv',
@@ -73,6 +74,14 @@ class RealATPDataCollector:
 
         if all_matches:
             combined_df = pd.concat(all_matches, ignore_index=True)
+
+            # Try to add local 2025 data if Sackmann's 2025 data wasn't available
+            local_2025_data = self.try_local_2025_data()
+            if local_2025_data is not None and '2025' not in successful_years:
+                print(f"   📊 Adding local 2025 data: {len(local_2025_data):,} matches")
+                combined_df = pd.concat([combined_df, local_2025_data], ignore_index=True)
+                successful_years.append('2025 (local)')
+
             print(f"\n✅ REAL ATP DATA COLLECTED!")
             print(f"   📊 Total matches: {len(combined_df):,}")
             print(f"   📅 Years: {', '.join(successful_years)}")
@@ -82,6 +91,70 @@ class RealATPDataCollector:
         else:
             print("❌ No real ATP data could be fetched")
             return None
+
+    def try_local_2025_data(self):
+        """Try to load local 2025 ATP data"""
+        try:
+            local_2025_file = 'data/atp_matches_2025.csv'
+            if os.path.exists(local_2025_file):
+                print(f"   📊 Loading local 2025 data: {local_2025_file}")
+                df_2025 = pd.read_csv(local_2025_file)
+
+                # Convert to Sackmann format for compatibility
+                sackmann_format = []
+                for _, match in df_2025.iterrows():
+                    sackmann_match = {
+                        'tourney_date': match.get('date', '20250101'),
+                        'tourney_name': match.get('tournament_name', 'ATP 2025'),
+                        'surface': match.get('surface', 'Hard').title(),
+                        'tourney_level': self.reverse_map_tournament_level(match.get('tournament_type', 'atp_250')),
+                        'round': match.get('round', 'F'),
+                        'winner_name': match.get('winner', 'Unknown'),
+                        'loser_name': match.get('loser', 'Unknown'),
+                        'score': match.get('score', ''),
+                        'best_of': match.get('best_of', 3),
+                        'minutes': match.get('match_duration_minutes', 120),
+
+                        # Service stats
+                        'w_ace': match.get('winner_aces', 0),
+                        'l_ace': match.get('loser_aces', 0),
+                        'w_df': match.get('winner_double_faults', 0),
+                        'l_df': match.get('loser_double_faults', 0),
+
+                        # Rankings
+                        'winner_rank': match.get('winner_rank', 999),
+                        'loser_rank': match.get('loser_rank', 999),
+                        'winner_rank_points': match.get('winner_rank_points', 0),
+                        'loser_rank_points': match.get('loser_rank_points', 0),
+
+                        # Player details
+                        'winner_age': match.get('winner_age', 25),
+                        'loser_age': match.get('loser_age', 25),
+                        'winner_hand': match.get('winner_hand', 'R'),
+                        'loser_hand': match.get('loser_hand', 'R'),
+                        'winner_ht': match.get('winner_height', 180),
+                        'loser_ht': match.get('loser_height', 180)
+                    }
+                    sackmann_format.append(sackmann_match)
+
+                return pd.DataFrame(sackmann_format)
+            else:
+                return None
+        except Exception as e:
+            print(f"   ⚠️  Could not load local 2025 data: {str(e)[:50]}...")
+            return None
+
+    def reverse_map_tournament_level(self, tournament_type):
+        """Reverse map tournament type to Sackmann format"""
+        reverse_map = {
+            'grand_slam': 'G',
+            'masters_1000': 'M',
+            'atp_500': 'A',
+            'atp_250': 'D',
+            'atp_finals': 'F',
+            'davis_cup': 'C'
+        }
+        return reverse_map.get(tournament_type, 'D')
 
     def process_atp_data(self, atp_df):
         """
