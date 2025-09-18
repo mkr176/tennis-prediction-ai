@@ -282,6 +282,19 @@ class TennisEloSystem:
         player_ratings.sort(key=lambda x: x[1], reverse=True)
         return player_ratings[:n]
 
+    def get_all_players(self):
+        """Get all players in the system"""
+        return list(self.player_elo.keys())
+
+    def player_exists(self, player_name):
+        """Check if a player exists in the system"""
+        return player_name in self.player_elo
+
+    def has_played_matches(self, player_name):
+        """Check if a player has played any matches (has match history)"""
+        return (player_name in self.player_stats and
+                self.player_stats[player_name]['matches_played'] > 0)
+
     def plot_elo_progression(self, players, surface=None, save_path=None):
         """
         Plot ELO progression over time (like YouTube model visualization)

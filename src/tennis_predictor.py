@@ -111,13 +111,88 @@ class TennisPredictor:
 
         return features
 
+    def validate_players(self, player1, player2):
+        """
+        Validate that both players exist in the system and have match history
+        """
+        if not self.elo_system:
+            if not self.load_model():
+                return False, "Model not loaded"
+
+        # Check if both players exist and have played matches
+        player1_exists = self.elo_system.has_played_matches(player1)
+        player2_exists = self.elo_system.has_played_matches(player2)
+
+        if not player1_exists and not player2_exists:
+            suggestions1 = self.suggest_similar_players(player1, 3)
+            suggestions2 = self.suggest_similar_players(player2, 3)
+            message = f"Neither '{player1}' nor '{player2}' found in the system.\n"
+            if suggestions1:
+                message += f"   Similar to '{player1}': {', '.join(suggestions1)}\n"
+            if suggestions2:
+                message += f"   Similar to '{player2}': {', '.join(suggestions2)}"
+            return False, message
+        elif not player1_exists:
+            suggestions = self.suggest_similar_players(player1, 3)
+            message = f"Player '{player1}' not found in the system."
+            if suggestions:
+                message += f"\n   Did you mean: {', '.join(suggestions)}?"
+            return False, message
+        elif not player2_exists:
+            suggestions = self.suggest_similar_players(player2, 3)
+            message = f"Player '{player2}' not found in the system."
+            if suggestions:
+                message += f"\n   Did you mean: {', '.join(suggestions)}?"
+            return False, message
+
+        return True, "Both players validated"
+
+    def get_available_players(self, limit=None):
+        """Get list of all available players in the system"""
+        if not self.elo_system:
+            if not self.load_model():
+                return []
+
+        all_players = self.elo_system.get_all_players()
+        # Filter to only players who have actually played matches
+        active_players = [player for player in all_players
+                         if self.elo_system.has_played_matches(player)]
+
+        if limit:
+            return active_players[:limit]
+        return active_players
+
+    def suggest_similar_players(self, player_name, limit=5):
+        """Suggest similar player names from the system"""
+        if not self.elo_system:
+            if not self.load_model():
+                return []
+
+        all_players = self.get_available_players()
+        player_name_lower = player_name.lower()
+
+        # Find players that contain the search term
+        matches = []
+        for player in all_players:
+            if player_name_lower in player.lower():
+                matches.append(player)
+
+        return matches[:limit] if matches else all_players[:limit]
+
     def predict_match(self, player1, player2, surface='hard', tournament_type='atp_250'):
         """
         Predict tennis match outcome using 85% accuracy model
+        Only works for players that exist in the system
         """
         if not self.model:
             if not self.load_model():
                 return None
+
+        # Validate players exist in the system
+        valid, message = self.validate_players(player1, player2)
+        if not valid:
+            print(f"❌ Validation failed: {message}")
+            return None
 
         # Create prediction features
         features = self.create_prediction_features(player1, player2, surface, tournament_type)

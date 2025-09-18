@@ -23,6 +23,7 @@ def interactive_prediction():
     while True:
         print("\n🔮 PREDICT A TENNIS MATCH")
         print("-" * 30)
+        print("💡 Type 'players' to see available players, or 'quit' to exit")
 
         # Get player names
         player1 = input("Enter Player 1 name: ").strip()
@@ -30,9 +31,39 @@ def interactive_prediction():
             print("❌ Player name cannot be empty")
             continue
 
+        if player1.lower() in ['quit', 'exit']:
+            print("🎾 Thanks for using Tennis Match Predictor!")
+            break
+
+        if player1.lower() == 'players':
+            available_players = predictor.get_available_players(20)
+            if available_players:
+                print(f"\n📋 Available players ({len(available_players)} showing):")
+                for i, player in enumerate(available_players[:20], 1):
+                    print(f"  {i:2d}. {player}")
+                if len(predictor.get_available_players()) > 20:
+                    total = len(predictor.get_available_players())
+                    print(f"  ... and {total-20} more players")
+            else:
+                print("❌ No players found. Make sure the model is trained.")
+            continue
+
         player2 = input("Enter Player 2 name: ").strip()
         if not player2:
             print("❌ Player name cannot be empty")
+            continue
+
+        if player2.lower() == 'players':
+            available_players = predictor.get_available_players(20)
+            if available_players:
+                print(f"\n📋 Available players ({len(available_players)} showing):")
+                for i, player in enumerate(available_players[:20], 1):
+                    print(f"  {i:2d}. {player}")
+                if len(predictor.get_available_players()) > 20:
+                    total = len(predictor.get_available_players())
+                    print(f"  ... and {total-20} more players")
+            else:
+                print("❌ No players found. Make sure the model is trained.")
             continue
 
         # Get surface
@@ -84,6 +115,12 @@ def interactive_prediction():
 
             else:
                 print("❌ Could not make prediction. Players might not be in the system.")
+                # Show some available players as examples
+                available_players = predictor.get_available_players(10)
+                if available_players:
+                    print(f"💡 Available players include: {', '.join(available_players[:5])}")
+                    if len(available_players) > 5:
+                        print(f"   ...and {len(available_players)-5} more players")
 
         except Exception as e:
             print(f"❌ Error making prediction: {e}")
@@ -119,6 +156,12 @@ def command_line_prediction(player1, player2, surface="hard", tournament="atp_50
             return prediction
         else:
             print("❌ Could not make prediction")
+            # Show some available players as examples
+            available_players = predictor.get_available_players(10)
+            if available_players:
+                print(f"💡 Available players include: {', '.join(available_players[:5])}")
+                if len(available_players) > 5:
+                    print(f"   ...and {len(available_players)-5} more players")
             return None
 
     except Exception as e:
