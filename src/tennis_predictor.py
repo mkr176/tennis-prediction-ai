@@ -111,41 +111,227 @@ class TennisPredictor:
 
         return features
 
+    def normalize_name(self, name):
+        """
+        Normalize a name for better matching (handle apostrophes, accents, etc.)
+        """
+        import re
+        # Convert to lowercase and strip whitespace
+        normalized = name.lower().strip()
+
+        # Handle apostrophes - both ways (with and without)
+        # This creates multiple versions for matching
+        variations = [normalized]
+
+        # Add version without apostrophes
+        no_apostrophe = re.sub(r"['']", "", normalized)
+        if no_apostrophe != normalized:
+            variations.append(no_apostrophe)
+
+        # Add version with different apostrophe styles
+        if "'" in normalized:
+            variations.append(normalized.replace("'", "'"))  # curly apostrophe
+        if "'" in normalized:
+            variations.append(normalized.replace("'", "'"))  # straight apostrophe
+
+        # Handle common accent removal (basic)
+        accent_map = {
+            'á': 'a', 'à': 'a', 'â': 'a', 'ä': 'a', 'ã': 'a',
+            'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
+            'í': 'i', 'ì': 'i', 'î': 'i', 'ï': 'i',
+            'ó': 'o', 'ò': 'o', 'ô': 'o', 'ö': 'o', 'õ': 'o',
+            'ú': 'u', 'ù': 'u', 'û': 'u', 'ü': 'u',
+            'ñ': 'n', 'ç': 'c'
+        }
+
+        for original in variations.copy():
+            no_accent = original
+            for accented, plain in accent_map.items():
+                no_accent = no_accent.replace(accented, plain)
+            if no_accent != original:
+                variations.append(no_accent)
+
+        return list(set(variations))  # Remove duplicates
+
+    def find_player_match(self, player_name):
+        """
+        Find the best match for a player name (case-insensitive and fuzzy matching)
+        Handles apostrophes, accents, and special characters
+        Returns: (matched_name, confidence_score) or (None, 0)
+        """
+        if not self.elo_system:
+            return None, 0
+
+        all_players = self.elo_system.get_all_players()
+        search_variations = self.normalize_name(player_name)
+
+        # Try exact match first (case-insensitive with normalization)
+        for search_variant in search_variations:
+            for player in all_players:
+                player_variations = self.normalize_name(player)
+                for player_variant in player_variations:
+                    if search_variant == player_variant:
+                        if self.elo_system.has_played_matches(player):
+                            return player, 1.0
+
+        best_match = None
+        best_score = 0
+
+        # Now do fuzzy matching with normalized names
+        for player in all_players:
+            if not self.elo_system.has_played_matches(player):
+                continue
+
+            player_variations = self.normalize_name(player)
+            score = 0
+
+            # Test each search variation against each player variation
+            for search_variant in search_variations:
+                search_parts = search_variant.split()
+
+                for player_variant in player_variations:
+                    player_parts = player_variant.split()
+                    current_score = 0
+
+                    # Full substring match
+                    if search_variant in player_variant or player_variant in search_variant:
+                        current_score = 0.85
+
+                    # Check name parts matching
+                    exact_matches = 0
+                    partial_matches = 0
+
+                    for search_part in search_parts:
+                        if len(search_part) >= 2:  # Consider meaningful parts
+                            for player_part in player_parts:
+                                # Exact part match
+                                if search_part == player_part:
+                                    exact_matches += 1
+                                # Partial match (one contains the other)
+                                elif search_part in player_part or player_part in search_part:
+                                    partial_matches += 1
+                                # Similar starting letters for longer names
+                                elif (len(search_part) >= 4 and len(player_part) >= 4 and
+                                      search_part[:3] == player_part[:3]):
+                                    partial_matches += 0.7
+
+                    if exact_matches > 0 or partial_matches > 0:
+                        # Score based on matches
+                        part_score = 0.4 + (exact_matches * 0.3) + (partial_matches * 0.15)
+                        current_score = max(current_score, part_score)
+
+                        # Bonus for having all parts matched
+                        if exact_matches + partial_matches >= len(search_parts):
+                            current_score += 0.2
+
+                        # Bonus for first/last name exact matches
+                        if len(search_parts) >= 2 and len(player_parts) >= 2:
+                            if search_parts[0] == player_parts[0]:  # First name exact
+                                current_score += 0.15
+                            if search_parts[-1] == player_parts[-1]:  # Last name exact
+                                current_score += 0.15
+
+                    # Boost score for similar length names
+                    length_diff = abs(len(search_variant) - len(player_variant))
+                    if length_diff <= 3:
+                        current_score += 0.1
+                    elif length_diff <= 6:
+                        current_score += 0.05
+
+                    # Keep the best score for this player
+                    score = max(score, current_score)
+
+            # Lower threshold for matching - be more aggressive
+            if score > best_score and score >= 0.5:  # Lower minimum confidence threshold
+                best_match = player
+                best_score = score
+
+        return best_match, best_score
+
     def validate_players(self, player1, player2):
         """
         Validate that both players exist in the system and have match history
+        Uses smart matching for case-insensitive and fuzzy name matching
         """
         if not self.elo_system:
             if not self.load_model():
-                return False, "Model not loaded"
+                return False, "Model not loaded", player1, player2
 
-        # Check if both players exist and have played matches
-        player1_exists = self.elo_system.has_played_matches(player1)
-        player2_exists = self.elo_system.has_played_matches(player2)
+        # Try to find matches for both players
+        matched_player1, score1 = self.find_player_match(player1)
+        matched_player2, score2 = self.find_player_match(player2)
 
-        if not player1_exists and not player2_exists:
-            suggestions1 = self.suggest_similar_players(player1, 3)
-            suggestions2 = self.suggest_similar_players(player2, 3)
-            message = f"Neither '{player1}' nor '{player2}' found in the system.\n"
-            if suggestions1:
-                message += f"   Similar to '{player1}': {', '.join(suggestions1)}\n"
-            if suggestions2:
-                message += f"   Similar to '{player2}': {', '.join(suggestions2)}"
-            return False, message
-        elif not player1_exists:
-            suggestions = self.suggest_similar_players(player1, 3)
-            message = f"Player '{player1}' not found in the system."
-            if suggestions:
-                message += f"\n   Did you mean: {', '.join(suggestions)}?"
-            return False, message
-        elif not player2_exists:
-            suggestions = self.suggest_similar_players(player2, 3)
+        if matched_player1 and matched_player2:
+            # Both players found
+            message = "Both players validated"
+            if matched_player1.lower() != player1.lower():
+                message += f" ('{player1}' -> '{matched_player1}')"
+            if matched_player2.lower() != player2.lower():
+                message += f" ('{player2}' -> '{matched_player2}')"
+            return True, message, matched_player1, matched_player2
+
+        elif matched_player1 and not matched_player2:
+            # Only player1 found
+            suggestions = self.suggest_similar_players(player2, 5)
+            surname_info = self.get_surname_specific_suggestions(player2)
+
             message = f"Player '{player2}' not found in the system."
-            if suggestions:
-                message += f"\n   Did you mean: {', '.join(suggestions)}?"
-            return False, message
+            if matched_player1.lower() != player1.lower():
+                message += f" ('{player1}' matched to '{matched_player1}')"
 
-        return True, "Both players validated"
+            if suggestions:
+                message += f"\n   💡 Did you mean: {', '.join(suggestions[:3])}?"
+
+            # Add surname-specific suggestions
+            if surname_info['surname_suggestions']:
+                message += f"\n   🔍 Players with similar surnames: {', '.join(surname_info['surname_suggestions'])}"
+            if surname_info['firstname_suggestions']:
+                message += f"\n   👤 Players with same first name: {', '.join(surname_info['firstname_suggestions'])}"
+
+            return False, message, matched_player1, player2
+
+        elif not matched_player1 and matched_player2:
+            # Only player2 found
+            suggestions = self.suggest_similar_players(player1, 5)
+            surname_info = self.get_surname_specific_suggestions(player1)
+
+            message = f"Player '{player1}' not found in the system."
+            if matched_player2.lower() != player2.lower():
+                message += f" ('{player2}' matched to '{matched_player2}')"
+
+            if suggestions:
+                message += f"\n   💡 Did you mean: {', '.join(suggestions[:3])}?"
+
+            # Add surname-specific suggestions
+            if surname_info['surname_suggestions']:
+                message += f"\n   🔍 Players with similar surnames: {', '.join(surname_info['surname_suggestions'])}"
+            if surname_info['firstname_suggestions']:
+                message += f"\n   👤 Players with same first name: {', '.join(surname_info['firstname_suggestions'])}"
+
+            return False, message, player1, matched_player2
+
+        else:
+            # Neither player found
+            suggestions1 = self.suggest_similar_players(player1, 5)
+            suggestions2 = self.suggest_similar_players(player2, 5)
+            surname_info1 = self.get_surname_specific_suggestions(player1)
+            surname_info2 = self.get_surname_specific_suggestions(player2)
+
+            message = f"Neither '{player1}' nor '{player2}' found in the system.\n"
+
+            # Player 1 suggestions
+            if suggestions1:
+                message += f"   💡 Similar to '{player1}': {', '.join(suggestions1[:3])}\n"
+            if surname_info1['surname_suggestions']:
+                message += f"   🔍 '{player1}' similar surnames: {', '.join(surname_info1['surname_suggestions'])}\n"
+
+            # Player 2 suggestions
+            if suggestions2:
+                message += f"   💡 Similar to '{player2}': {', '.join(suggestions2[:3])}\n"
+            if surname_info2['surname_suggestions']:
+                message += f"   🔍 '{player2}' similar surnames: {', '.join(surname_info2['surname_suggestions'])}"
+
+            return False, message, player1, player2
 
     def get_available_players(self, limit=None):
         """Get list of all available players in the system"""
@@ -163,21 +349,156 @@ class TennisPredictor:
         return active_players
 
     def suggest_similar_players(self, player_name, limit=5):
-        """Suggest similar player names from the system"""
+        """Suggest similar player names from the system with smart matching and surname-specific suggestions"""
         if not self.elo_system:
             if not self.load_model():
                 return []
 
         all_players = self.get_available_players()
+        search_variations = self.normalize_name(player_name)
         player_name_lower = player_name.lower()
+        name_parts = player_name_lower.split()
 
-        # Find players that contain the search term
-        matches = []
+        # Score each player for similarity
+        scored_players = []
+        surname_matches = []  # Track players with matching surnames
+        similar_surnames = []  # Track players with similar surnames
+
         for player in all_players:
-            if player_name_lower in player.lower():
-                matches.append(player)
+            player_lower = player.lower()
+            player_parts = player_lower.split()
+            score = 0
 
-        return matches[:limit] if matches else all_players[:limit]
+            # Exact match (case-insensitive)
+            if player_lower == player_name_lower:
+                score = 100
+
+            # Full substring match
+            elif player_name_lower in player_lower or player_lower in player_name_lower:
+                score = 80
+
+            # Check for surname/lastname matches specifically
+            if len(name_parts) >= 2 and len(player_parts) >= 2:
+                search_lastname = name_parts[-1]
+                player_lastname = player_parts[-1]
+
+                # Exact surname match
+                if search_lastname == player_lastname:
+                    surname_matches.append(player)
+                    score += 25  # Bonus for surname match
+
+                # Similar surname (for typos/variations)
+                elif (len(search_lastname) >= 3 and len(player_lastname) >= 3 and
+                      (search_lastname[:3] == player_lastname[:3] or
+                       search_lastname in player_lastname or player_lastname in search_lastname)):
+                    similar_surnames.append(player)
+
+            # Name parts matching
+            matches = 0
+            partial_matches = 0
+
+            for search_part in name_parts:
+                if len(search_part) >= 2:  # Consider meaningful parts
+                    for player_part in player_parts:
+                        # Exact part match
+                        if search_part == player_part:
+                            matches += 2
+                        # Partial part match
+                        elif search_part in player_part or player_part in search_part:
+                            partial_matches += 1
+                        # Similar length and first letters match
+                        elif (len(search_part) >= 3 and len(player_part) >= 3 and
+                              search_part[:2] == player_part[:2]):
+                            partial_matches += 0.5
+
+            if matches > 0 or partial_matches > 0:
+                score = 30 + (matches * 15) + (partial_matches * 5)
+
+                # Bonus for similar total length
+                if abs(len(player_name_lower) - len(player_lower)) <= 5:
+                    score += 5
+
+                # Bonus if first or last names match
+                if len(name_parts) >= 2 and len(player_parts) >= 2:
+                    if (name_parts[0] == player_parts[0] or  # First name match
+                        name_parts[-1] == player_parts[-1]):  # Last name match
+                        score += 20
+
+            if score > 0:
+                scored_players.append((player, score))
+
+        # Sort by score (highest first)
+        scored_players.sort(key=lambda x: x[1], reverse=True)
+
+        # Build smart suggestions prioritizing surname matches
+        suggestions = []
+
+        # First, add exact surname matches (highest priority)
+        for player in surname_matches:
+            if player not in suggestions:
+                suggestions.append(player)
+                if len(suggestions) >= limit:
+                    break
+
+        # Then add highest scoring matches that aren't already included
+        for player, score in scored_players:
+            if player not in suggestions:
+                suggestions.append(player)
+                if len(suggestions) >= limit:
+                    break
+
+        # If we still need more and have similar surnames, add them
+        if len(suggestions) < limit:
+            for player in similar_surnames:
+                if player not in suggestions:
+                    suggestions.append(player)
+                    if len(suggestions) >= limit:
+                        break
+
+        # If still no good matches, return some popular players
+        if not suggestions:
+            suggestions = all_players[:limit]
+
+        return suggestions[:limit]
+
+    def get_surname_specific_suggestions(self, player_name):
+        """Get specific suggestions when surname isn't found"""
+        if not self.elo_system:
+            return []
+
+        all_players = self.get_available_players()
+        name_parts = player_name.lower().strip().split()
+
+        if len(name_parts) < 2:
+            return []
+
+        search_surname = name_parts[-1]
+        search_firstname = name_parts[0]
+
+        # Find players with similar surnames
+        surname_suggestions = []
+        firstname_suggestions = []
+
+        for player in all_players:
+            player_parts = player.lower().split()
+            if len(player_parts) >= 2:
+                player_surname = player_parts[-1]
+                player_firstname = player_parts[0]
+
+                # Similar surnames
+                if (len(search_surname) >= 3 and len(player_surname) >= 3 and
+                    (search_surname[:3] == player_surname[:3] or
+                     search_surname in player_surname or player_surname in search_surname)):
+                    surname_suggestions.append(player)
+
+                # Same first name, different surname
+                if search_firstname == player_firstname and search_surname != player_surname:
+                    firstname_suggestions.append(player)
+
+        return {
+            'surname_suggestions': surname_suggestions[:3],
+            'firstname_suggestions': firstname_suggestions[:3]
+        }
 
     def predict_match(self, player1, player2, surface='hard', tournament_type='atp_250'):
         """
@@ -188,11 +509,28 @@ class TennisPredictor:
             if not self.load_model():
                 return None
 
-        # Validate players exist in the system
-        valid, message = self.validate_players(player1, player2)
+        # Validate players exist in the system (now returns matched names)
+        validation_result = self.validate_players(player1, player2)
+        if len(validation_result) == 4:  # New format with matched names
+            valid, message, matched_player1, matched_player2 = validation_result
+        else:  # Fallback for old format
+            valid, message = validation_result
+            matched_player1, matched_player2 = player1, player2
+
         if not valid:
             print(f"❌ Validation failed: {message}")
+            # Show some available players as suggestions
+            available = self.get_available_players(10)
+            if available:
+                print("💡 Available players include:", ", ".join(available[:5]))
+                if len(available) > 5:
+                    print(f"   ...and {len(available) - 5} more players")
             return None
+
+        print(f"✅ {message}")
+
+        # Use the matched player names for prediction
+        player1, player2 = matched_player1, matched_player2
 
         # Create prediction features
         features = self.create_prediction_features(player1, player2, surface, tournament_type)
